@@ -3,33 +3,29 @@ import pandas as pd
 import random
 import numpy as np
 
-
 @st.cache_data
 def load_questions(excel_path: str):
-    """Load Excel with robust column handling and numeric conversion."""
-    # Read ALL columns first to inspect
+    """Load quiz Excel with robust column handling."""
     df = pd.read_excel(excel_path)
-    st.write("**DEBUG: Excel columns found:**", list(df.columns))
+    st.write("**DEBUG: Quiz Excel columns:**", list(df.columns))
     st.write("**DEBUG: First few rows:**")
     st.dataframe(df.head())
 
-    # Handle NO HEADER case (most likely your issue)
     if len(df.columns) >= 15 or df.columns[0] in ['A', 'Unnamed: 0']:
         colnames = ["question", "ans1", "ans2", "ans3", "ans4",
-                    "skip1", "work1", "work2", "work3", "work4",
-                    "skip2", "pers1", "pers2", "pers3", "pers4"]
+                   "skip1", "work1", "work2", "work3", "work4",
+                   "skip2", "pers1", "pers2", "pers3", "pers4"]
         df = pd.read_excel(excel_path, header=None, names=colnames, usecols="A:O")
-        st.success("✅ Using NO HEADER mode (columns A-O)")
+        st.success("✅ Quiz: Using NO HEADER mode (columns A-O)")
 
-    # Convert score columns to numeric SAFELY
     score_cols = ['work1', 'work2', 'work3', 'work4', 'pers1', 'pers2', 'pers3', 'pers4']
     for col in score_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')  # NaN for bad values
+            df[col] = pd.to_numeric(df[col], errors='coerce')
 
     questions = []
     for idx, row in df.iterrows():
-        if pd.isna(row['question']):  # Skip empty rows
+        if pd.isna(row['question']):
             continue
 
         options = []
@@ -51,41 +47,83 @@ def load_questions(excel_path: str):
     random.shuffle(questions)
     return questions
 
+@st.cache_data
+def load_results(results_path: str):
+    """Load results.xlsx: col0=name, col1=description, col2=image_url (9 results in order)"""
+    df = pd.read_excel(results_path, header=None, names=['name', 'description', 'image_url'])
+    df = df.dropna(subset=['name']).head(9)  # Exactly 9 results
+    return df.reset_index(drop=True)
+
+def get_result_category(work_score, pers_score):
+    """Map scores to 3x3 grid with correct thresholds"""
+    # Work: <20=LOW, 20-40=MID (incl. 20,40), >40=HIGH
+    # Pers: <30=LOW, 30-60=MID (incl. 30,60), >60=HIGH
+    work_cat = "LOW" if work_score < 10 else "MID" if work_score <= 17 else "HIGH"
+    pers_cat = "LOW" if pers_score < 11 else "MID" if pers_score <= 22 else "HIGH"
+    
+    return work_cat, pers_cat
+
+def find_result(work_score, pers_score, results_df):
+    """Find exact result from 9-result matrix - FIXED indexing"""
+    work_cat, pers_cat = get_result_category(work_score, pers_score)
+    
+    # CORRECT 3x3 mapping (column-major: pers x work)
+    category_map = {
+        ("HIGH", "HIGH"): 0,   # Row 1: maxW_maxP
+        ("MID", "HIGH"): 1,    # Row 2: midW_maxP  
+        ("LOW", "HIGH"): 2,    # Row 3: lowW_maxP
+        ("HIGH", "MID"): 3,    # Row 4: maxW_midP
+        ("MID", "MID"): 4,     # Row 5: midW_midP
+        ("LOW", "MID"): 5,     # Row 6: lowW_midP  ← YOUR CASE
+        ("HIGH", "LOW"): 6,    # Row 7: maxW_lowP
+        ("MID", "LOW"): 7,     # Row 8: midW_lowP
+        ("LOW", "LOW"): 8      # Row 9: lowW_lowP
+    }
+    
+    key = (work_cat, pers_cat)
+    if key in category_map:
+        grid_index = category_map[key]
+        return results_df.iloc[grid_index]
+    return None
 
 st.title("🧠 Personality & Work Style Quiz")
 
-# File input
-uploaded_file = st.file_uploader("📁 Upload quiz.xlsx", type="xlsx")
-excel_path = uploaded_file.name if uploaded_file else "quiz.xlsx"
+# File inputs
+quiz_file = st.file_uploader("📁 Upload quiz.xlsx", type="xlsx")
+results_file = st.file_uploader("📁 Upload results.xlsx", type="xlsx")
 
-if excel_path and (uploaded_file or excel_path == "quiz.xlsx"):
+quiz_path = quiz_file.name if quiz_file else "Personalityquiz/quiz.xlsx"
+results_path = results_file.name if results_file else "Personalityquiz/results.xlsx"
+
+if quiz_path:
     try:
-        questions = load_questions(uploaded_file if uploaded_file else excel_path)
-
+        questions = load_questions(quiz_file if quiz_file else quiz_path)
         if not questions:
-            st.error("❌ No valid questions found. Check Excel format.")
+            st.error("❌ No valid questions found.")
             st.stop()
-
+        
         st.success(f"✅ Loaded {len(questions)} questions!")
 
-        # Session state for answers
         if "responses" not in st.session_state:
             st.session_state.responses = [None] * len(questions)
 
-        # Questions
+        progress_bar = st.progress(0)
+
         for idx, q in enumerate(questions):
-            with st.expander(f"Q{idx + 1}: {q['question'][:60]}..."):
-                option_texts = [opt["text"] for opt in q["options"]]
-                choice = st.radio(
-                    "Your answer:",
-                    option_texts,
-                    index=0 if st.session_state.responses[idx] is None else
-                    option_texts.index(st.session_state.responses[idx]),
-                    key=f"q_{idx}_{random.randint(1, 10000)}"  # Unique key
-                )
+            st.subheader(f"Q{idx+1}")
+            st.write(q["question"])
+            
+            option_texts = [opt["text"] for opt in q["options"]]
+            choice = st.radio("Your answer:", option_texts, key=f"radio_q{idx}")
+            
+            if choice:
                 st.session_state.responses[idx] = choice
 
-        if st.button("🚀 Calculate My Scores!", type="primary"):
+        answered = sum(1 for r in st.session_state.responses if r is not None)
+        progress_bar.progress(answered / len(questions))
+        st.caption(f"Answered: {answered}/{len(questions)} questions")
+
+        if st.button("🚀 Calculate My Results!", type="primary"):
             total_work = total_pers = 0.0
             valid_answers = 0
 
@@ -96,22 +134,40 @@ if excel_path and (uploaded_file or excel_path == "quiz.xlsx"):
                     total_pers += selected["personality"]
                     valid_answers += 1
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("💼 Work Score", f"{total_work:.1f}", delta=None)
-            with col2:
-                st.metric("🧠 Personality Score", f"{total_pers:.1f}", delta=None)
-
-            st.balloons()
+            # Load results and find match
+            results_df = load_results(results_file if results_file else results_path)
+            st.success(f"📊 Raw Scores: Work={total_work:.1f}, Personality={total_pers:.1f}")
+            
+            result = find_result(total_work, total_pers, results_df)
+            
+            if result is not None:
+                st.markdown("---")
+                st.markdown(f"# 🎯 **{result['name']}**")
+                st.markdown(f"**{result['description']}**")
+                
+                if pd.notna(result['image_url']) and result['image_url']:
+                    st.image(result['image_url'], use_column_width=True)
+                
+                st.markdown("---")
+            else:
+                st.warning("❌ No matching result found. Check scores vs thresholds.")
 
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
         st.info("""
-        **Expected Excel format (NO headers needed):**
-        ```
-        Row1: [Question?] [A] [B] [C] [D] [(empty)] [1.0] [2.0] [0.5] [3.0] [(empty)] [2.0] [1.5] [4.0] [0.0]
-        ```
-        Columns: A=Question, B-E=Answers, G-J=Work scores, L-O=Personality scores
+**Quiz Excel (NO headers):**
+Row1: [Question] [A] [B] [C] [D] [empty] [1.0] [2.0] [0.5] [3.0] [empty] [2.0] [1.5] [4.0] [0.0]
+
+**Results Excel (NO headers, EXACTLY 9 rows in this order):**
+Row1: maxW_maxP    [desc]    [image_url]  # HIGH work (>40), HIGH pers (>60)
+Row2: midW_maxP    [desc]    [image_url]  # MID work (20-40), HIGH pers (>60)
+Row3: lowW_maxP    [desc]    [image_url]  # LOW work (<20), HIGH pers (>60)
+Row4: maxW_midP    [desc]    [image_url]  # HIGH work (>40), MID pers (30-60)
+Row5: midW_midP    [desc]    [image_url]  # MID work (20-40), MID pers (30-60)
+Row6: lowW_midP    [desc]    [image_url]  # LOW work (<20), MID pers (30-60)
+Row7: maxW_lowP    [desc]    [image_url]  # HIGH work (>40), LOW pers (<30)
+Row8: midW_lowP    [desc]    [image_url]  # MID work (20-40), LOW pers (<30)
+Row9: lowW_lowP    [desc]    [image_url]  # LOW work (<20), LOW pers (<30)
         """)
 else:
-    st.info("👈 Upload Excel or place `quiz.xlsx` in folder")
+    st.info("👈 Upload both Excel files or place them in folder")
