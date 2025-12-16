@@ -138,7 +138,7 @@ if quiz_source and results_source:
         progress_bar.progress(answered / len(questions))
         st.caption(f"Answered: {answered}/{len(questions)} questions")
 
-        if st.button("🚀 Calculate My Results!", type="primary"):
+        if st.button("Calculate My Results!", type="primary"):
             total_work = 0.0
             total_pers = 0.0
 
@@ -153,7 +153,7 @@ if quiz_source and results_source:
 
             if result is not None:
                 st.markdown("---")
-                st.markdown(f"# 🎯 **{result['name']}**")
+                st.markdown(f"# 🌱 **{result['name']}**")
                 st.markdown(f"**{result['description']}**")
 
                 if pd.notna(result['image_url']) and result['image_url']:
