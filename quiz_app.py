@@ -6,8 +6,8 @@ import os  # for file existence checks [web:19]
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-default_quiz_path = BASE_DIR / "data" / "quiz.xlsx"
-default_results_path = BASE_DIR / "data" / "results.xlsx"
+default_quiz_path = BASE_DIR / "quiz.xlsx"
+default_results_path = BASE_DIR / "results.xlsx"
 
 
 @st.cache_data
