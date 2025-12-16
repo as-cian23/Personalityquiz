@@ -3,6 +3,12 @@ import pandas as pd
 import random
 import numpy as np
 import os  # for file existence checks [web:19]
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+default_quiz_path = BASE_DIR / "data" / "quiz.xlsx"
+default_results_path = BASE_DIR / "data" / "results.xlsx"
+
 
 @st.cache_data
 def load_questions(excel_path: str):
@@ -83,11 +89,7 @@ def find_result(work_score, pers_score, results_df):
     return None
 
 
-st.title("🧠 Personality & Work Style Quiz")
-
-# Default paths
-default_quiz_path = "Personalityquiz/quiz.xlsx"
-default_results_path = "Personalityquiz/results.xlsx"
+st.title("What sort of office plant are you?")
 
 # Check if default files exist on disk [web:16][web:19]
 default_quiz_exists = os.path.isfile(default_quiz_path)
