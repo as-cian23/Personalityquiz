@@ -83,8 +83,8 @@ def update_stats(plant_name):
 
 def get_result_category(work_score, pers_score):
     """Map scores to 3x3 grid with correct thresholds."""
-    work_cat = "LOW" if work_score <= 10 else "MID" if work_score <= 17 else "HIGH"
-    pers_cat = "LOW" if pers_score <= 11 else "MID" if pers_score <= 22 else "HIGH"
+    work_cat = "LOW" if work_score <= 10 else "MID" if work_score <= 15 else "HIGH"
+    pers_cat = "LOW" if pers_score <= 10 else "MID" if pers_score <= 22 else "HIGH"
     return work_cat, pers_cat
 
 
