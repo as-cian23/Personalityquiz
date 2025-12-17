@@ -8,6 +8,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 default_quiz_path = BASE_DIR / "quiz.xlsx"
 default_results_path = BASE_DIR / "results.xlsx"
+results_stats_path = BASE_DIR / "results_stats.xlsx"  # New file for first-time stats
 
 
 @st.cache_data
@@ -57,6 +58,27 @@ def load_results(results_path: str):
     df = pd.read_excel(results_path, header=None, names=['name', 'description', 'image_url'])
     df = df.dropna(subset=['name']).head(9)
     return df.reset_index(drop=True)
+
+
+def ensure_stats_file():
+    """Create results_stats.xlsx if it doesn't exist."""
+    if not os.path.isfile(results_stats_path):
+        stats_df = pd.DataFrame(columns=['plant_name', 'count'])
+        stats_df.to_excel(results_stats_path, index=False)
+
+
+def update_stats(plant_name):
+    """Update statistics for first-time takers."""
+    ensure_stats_file()
+    stats_df = pd.read_excel(results_stats_path)
+    
+    if plant_name in stats_df['plant_name'].values:
+        stats_df.loc[stats_df['plant_name'] == plant_name, 'count'] += 1
+    else:
+        new_row = pd.DataFrame({'plant_name': [plant_name], 'count': [1]})
+        stats_df = pd.concat([stats_df, new_row], ignore_index=True)
+    
+    stats_df.to_excel(results_stats_path, index=False)
 
 
 def get_result_category(work_score, pers_score):
@@ -119,8 +141,26 @@ if quiz_source and results_source:
             st.error("❌ No valid questions found.")
             st.stop()
 
+        # Initialize session state
         if "responses" not in st.session_state:
             st.session_state.responses = [None] * len(questions)
+        if "first_time" not in st.session_state:
+            st.session_state.first_time = None
+
+        # NEW: First-time question (asked before quiz questions)
+        if st.session_state.first_time is None:
+            st.markdown("### Before we start...")
+            st.write("**Is this your first time doing the quiz?**")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Yes", key="first_yes"):
+                    st.session_state.first_time = True
+                    st.rerun()
+            with col2:
+                if st.button("❌ No", key="first_no"):
+                    st.session_state.first_time = False
+                    st.rerun()
+            st.stop()
 
         progress_bar = st.progress(0)
 
@@ -159,7 +199,18 @@ if quiz_source and results_source:
                 if pd.notna(result['image_url']) and result['image_url']:
                     st.image(result['image_url'], width="content")
 
+                # NEW: Update statistics if first time
+                if st.session_state.first_time:
+                    update_stats(result['name'])
+                    st.success("Thanks for doing the quiz! I hope you enjoyed it, feel free to share it with your friends and colleagues!")
+
                 st.markdown("---")
+                
+                # Reset for next user
+                if st.button("🔄 Take quiz again"):
+                    st.session_state.responses = [None] * len(questions)
+                    st.session_state.first_time = None
+                    st.rerun()
             else:
                 st.warning("❌ No matching result found. Check scores vs thresholds.")
 
